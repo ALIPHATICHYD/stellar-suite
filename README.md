@@ -4,6 +4,8 @@ A Visual Studio Code extension that improves the developer experience when build
 
 Stellar Suite removes friction from contract development by bringing build, deployment, and contract interaction workflows directly into your editor. Instead of constantly switching between VS Code and the terminal, developers can deploy and manage contracts through an interactive IDE experience.
 
+### Screenshot of current working MVP
+
 ![Stellar Suite MVP Screenshot](https://raw.githubusercontent.com/0xVida/stellar-suite/refs/heads/main/assets/screenshot.png)
 *Screenshot showing the current Stellar Suite mvp*
 
@@ -21,9 +23,9 @@ This workflow works, but it slows development and increases the chance of human 
 
 Stellar Suite is designed to streamline this process by providing an interactive developer experience directly inside VS Code. The extension integrates with the official Stellar CLI while removing repetitive manual steps.
 
-## Current Features (MVP)
+### Current Features (MVP)
 
-The first release focuses on simplifying contract deployment and contract tracking.
+The first release focuses on simplifying contract deployment, transaction simulation and invocation.
 
 ### One-Click Contract Build & Deployment
 
