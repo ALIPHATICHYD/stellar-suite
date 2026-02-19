@@ -12,6 +12,5 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", ".vscode-test", "**/*.test.ts"]
+  "exclude": ["node_modules", ".vscode-test"]
 }
