@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import {
   ChevronRight,
   ChevronDown,
@@ -26,6 +26,11 @@ interface FileExplorerProps {
   onCreateFolder: (parentPath: string[], name: string) => void;
   onDeleteNode: (path: string[]) => void;
   onRenameNode: (path: string[], newName: string) => void;
+  isDragActive?: boolean;
+  onDragEnter?: (event: React.DragEvent<HTMLDivElement>) => void;
+  onDragOver?: (event: React.DragEvent<HTMLDivElement>) => void;
+  onDragLeave?: (event: React.DragEvent<HTMLDivElement>) => void;
+  onDrop?: (event: React.DragEvent<HTMLDivElement>) => void;
 }
 
 function InlineInput({

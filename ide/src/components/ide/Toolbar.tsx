@@ -78,7 +78,7 @@ export function Toolbar({
               <option value="testnet">Testnet</option>
               <option value="futurenet">Futurenet</option>
               <option value="mainnet">Mainnet</option>
-              <option value="standalone">Standalone</option>
+              <option value="local">Local</option>
             </select>
           </div>
           <button className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">

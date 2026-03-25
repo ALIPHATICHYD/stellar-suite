@@ -6,16 +6,19 @@ import { Terminal, LogEntry } from "@/components/ide/Terminal";
 import { Toolbar } from "@/components/ide/Toolbar";
 import { ContractPanel } from "@/components/ide/ContractPanel";
 import { StatusBar } from "@/components/ide/StatusBar";
-import { FileNode } from "@/lib/sample-contracts";
 import { useFileStore } from "@/store/useFileStore";
 import { useIdentityStore } from "@/store/useIdentityStore";
 import { sampleContracts, FileNode } from "@/lib/sample-contracts";
 import { DROP_LIMIT_BYTES, mapDroppedEntriesToTree, mergeFileNodes, readDropPayload } from "@/lib/file-drop";
+import { NETWORK_CONFIG } from "@/lib/networkConfig";
 import {
   PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen,
-  FolderTree, Rocket, X, FileText, Terminal as TerminalIcon,
+  FolderTree, Rocket, X, FileText, Terminal as TerminalIcon, History,
 } from "lucide-react";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
+import { DeploymentsView } from "@/components/ide/DeploymentsView";
+import { useDeployedContractsStore } from "@/store/useDeployedContractsStore";
+import { NetworkKey } from "@/lib/networkConfig";
 
 const cloneFiles = (files: FileNode[]): FileNode[] =>
   JSON.parse(JSON.stringify(files));
@@ -58,9 +61,12 @@ const Index = () => {
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
   const [unsavedFiles, setUnsavedFiles] = useState<Set<string>>(new Set());
   const [saveStatus, setSaveStatus] = useState("");
-  const [mobilePanel, setMobilePanel] = useState<"none" | "explorer" | "interact">("none");
+  const [mobilePanel, setMobilePanel] = useState<"none" | "explorer" | "interact" | "deployments">("none");
    const [isExplorerDragActive, setIsExplorerDragActive] = useState(false);
+  const [leftSidebarTab, setLeftSidebarTab] = useState<"explorer" | "deployments">("explorer");
   const dragDepthRef = useRef(0);
+  
+  const { addContract } = useDeployedContractsStore();
 
   // Track saved state
   const savedContentRef = useRef<Record<string, string>>({});
@@ -302,11 +308,17 @@ const Index = () => {
     setTerminalExpanded(true);
     addLog("info", `Deploying to ${network}...`);
     setTimeout(() => {
-      const id = "CDLZ...X7YQ";
-      setContractId(id);
-      addLog("success", `✓ Contract deployed! ID: ${id}`);
+      const id = "CDLZ" + Math.random().toString(36).substring(2, 10).toUpperCase() + "X7YQ" + Math.random().toString(36).substring(2, 6).toUpperCase();
+      // Ensure it's 56 chars for realism in the UI if needed, but here we just need a unique-ish valid-ish looking ID
+      const fullId = `CD${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`.substring(0, 56).toUpperCase();
+      
+      setContractId(fullId);
+      addLog("success", `✓ Contract deployed! ID: ${fullId}`);
+      
+      // Persist to store
+      addContract(fullId, network as NetworkKey, "hello_world");
     }, 2000);
-  }, [network, addLog]);
+  }, [network, addLog, addContract]);
 
   const handleTest = useCallback(() => {
     setTerminalExpanded(true);
@@ -394,6 +406,7 @@ const Index = () => {
         onDeploy={handleDeploy}
         onTest={handleTest}
         isCompiling={isCompiling}
+        buildState={isCompiling ? "building" : "idle"}
         network={network}
         onNetworkChange={setNetwork}
         saveStatus={saveStatus}
@@ -402,14 +415,54 @@ const Index = () => {
       {/* Main area */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* Left Toggle Bar */}
-        <div className="hidden md:flex flex-col bg-sidebar border-r border-border shrink-0 z-10">
+        <div className="hidden md:flex flex-col bg-sidebar border-r border-border shrink-0 z-10 w-12 items-center py-4 gap-4">
           <button
-            onClick={() => setShowExplorer(!showExplorer)}
-            className="p-2 text-muted-foreground hover:text-foreground transition-colors"
-            title="Toggle Explorer"
+            onClick={() => {
+              if (leftSidebarTab === "explorer" && showExplorer) {
+                setShowExplorer(false);
+              } else {
+                setLeftSidebarTab("explorer");
+                setShowExplorer(true);
+              }
+            }}
+            className={`p-2 rounded-md transition-all ${
+              showExplorer && leftSidebarTab === "explorer" 
+                ? "bg-primary/20 text-primary shadow-sm" 
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            }`}
+            title="File Explorer"
           >
-            {showExplorer ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+            <FolderTree className="h-5 w-5" />
           </button>
+          
+          <button
+            onClick={() => {
+              if (leftSidebarTab === "deployments" && showExplorer) {
+                setShowExplorer(false);
+              } else {
+                setLeftSidebarTab("deployments");
+                setShowExplorer(true);
+              }
+            }}
+            className={`p-2 rounded-md transition-all ${
+              showExplorer && leftSidebarTab === "deployments" 
+                ? "bg-primary/20 text-primary shadow-sm" 
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            }`}
+            title="Recent Deployments"
+          >
+            <History className="h-5 w-5" />
+          </button>
+
+          <div className="mt-auto border-t border-border w-full pt-4 flex flex-col items-center">
+            <button
+              onClick={() => setShowExplorer(!showExplorer)}
+              className="p-2 text-muted-foreground hover:text-foreground transition-colors"
+              title="Toggle Sidebar"
+            >
+              {showExplorer ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
 
         {/* Mobile overlay panels */}
@@ -440,6 +493,22 @@ const Index = () => {
             <div className="flex-1 bg-background/60" onClick={() => setMobilePanel("none")} />
           </div>
         )}
+        {mobilePanel === "deployments" && (
+          <div className="md:hidden absolute inset-0 z-30 flex">
+            <div className="w-64 bg-sidebar border-r border-border h-full">
+               <DeploymentsView 
+                  activeContractId={contractId}
+                  onSelectContract={(id, net) => {
+                    setContractId(id);
+                    setNetwork(net);
+                    setMobilePanel("none");
+                    addLog("info", `Targeting contract ${id.substring(0,8)}... on ${net}`);
+                  }}
+                />
+            </div>
+            <div className="flex-1 bg-background/60" onClick={() => setMobilePanel("none")} />
+          </div>
+        )}
         {mobilePanel === "interact" && (
           <div className="md:hidden absolute inset-0 z-30 flex justify-end">
             <div className="flex-1 bg-background/60" onClick={() => setMobilePanel("none")} />
@@ -461,22 +530,33 @@ const Index = () => {
             
             {showExplorer && (
               <>
-                <ResizablePanel id="explorer" order={1} defaultSize={20} minSize={10} maxSize={40} className="hidden md:block">
+                 <ResizablePanel id="explorer" order={1} defaultSize={20} minSize={10} maxSize={40} className="hidden md:block">
                   <div className="h-full w-full overflow-hidden border-r border-border bg-sidebar">
-                     <FileExplorer
-                files={files}
-                onFileSelect={(path, file) => { handleFileSelect(path, file); }}
-                activeFilePath={activeTabPath}
-                onCreateFile={handleCreateFile}
-                onCreateFolder={handleCreateFolder}
-                onDeleteNode={handleDeleteNode}
-                onRenameNode={handleRenameNode}
-                isDragActive={isExplorerDragActive}
-                onDragEnter={handleExplorerDragEnter}
-                onDragOver={handleExplorerDragOver}
-                onDragLeave={handleExplorerDragLeave}
-                onDrop={handleExplorerDrop}
-              />
+                    {leftSidebarTab === "explorer" ? (
+                      <FileExplorer
+                        files={files}
+                        onFileSelect={(path, file) => { handleFileSelect(path, file); }}
+                        activeFilePath={activeTabPath}
+                        onCreateFile={handleCreateFile}
+                        onCreateFolder={handleCreateFolder}
+                        onDeleteNode={handleDeleteNode}
+                        onRenameNode={handleRenameNode}
+                        isDragActive={isExplorerDragActive}
+                        onDragEnter={handleExplorerDragEnter}
+                        onDragOver={handleExplorerDragOver}
+                        onDragLeave={handleExplorerDragLeave}
+                        onDrop={handleExplorerDrop}
+                      />
+                    ) : (
+                      <DeploymentsView 
+                        activeContractId={contractId}
+                        onSelectContract={(id, net) => {
+                          setContractId(id);
+                          setNetwork(net);
+                          addLog("info", `Targeting contract ${id.substring(0,8)}... on ${net}`);
+                        }}
+                      />
+                    )}
                   </div>
                 </ResizablePanel>
                 <ResizableHandle withHandle className="hidden md:flex" />
@@ -551,13 +631,16 @@ const Index = () => {
         </div>
       </div>
 
-      {/* Status Bar - Desktop */}
       <div className="hidden md:block">
         <StatusBar
           language={language}
           line={cursorPos.line}
           col={cursorPos.col}
-          network={network}
+          network={network as NetworkKey}
+          horizonUrl={NETWORK_CONFIG[network as NetworkKey]?.horizon || ""}
+          customRpcUrl={""}
+          onNetworkChange={(n) => setNetwork(n)}
+          onCustomRpcUrlChange={() => {}}
           unsavedCount={unsavedFiles.size}
         />
       </div>
@@ -574,7 +657,7 @@ const Index = () => {
         </div>
         {/* Tab buttons */}
         <div className="flex items-stretch">
-          <button
+           <button
             onClick={() =>
               setMobilePanel(mobilePanel === "explorer" ? "none" : "explorer")
             }
@@ -585,6 +668,18 @@ const Index = () => {
           >
             <FolderTree className="h-4 w-4" />
             Explorer
+          </button>
+          <button
+            onClick={() =>
+              setMobilePanel(mobilePanel === "deployments" ? "none" : "deployments")
+            }
+            className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors border-t-2 ${mobilePanel === "deployments"
+              ? "border-primary text-primary bg-primary/5"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+          >
+            <History className="h-4 w-4" />
+            Activity
           </button>
           <button
             onClick={() => setMobilePanel("none")}
