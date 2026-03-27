@@ -10,6 +10,7 @@ import {
   Sparkles,
   ShieldAlert,
   Loader2,
+  FileCode2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -17,6 +18,7 @@ import { BuildButton } from "@/components/ide/BuildButton";
 import { Button } from "@/components/ui/button";
 import { type NetworkKey } from "@/lib/networkConfig";
 import ImportGithubModal from "@/components/ide/ImportGithubModal";
+import CiConfigGenerator from "@/components/modals/CiConfigGenerator";
 import { WalletManager } from "@/components/WalletManager";
 import { useWorkspaceStore } from "@/store/workspaceStore";
 
@@ -71,6 +73,7 @@ export function Toolbar({
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [ciOpen, setCiOpen] = useState(false);
 
   return (
     <div className="border-b border-border bg-toolbar-bg">
@@ -107,6 +110,11 @@ export function Toolbar({
           <Button onClick={() => setImportOpen(true)} variant="ghost" size="sm" className="h-8 gap-1.5 text-xs">
             <Github className="h-3.5 w-3.5" />
             Import
+          </Button>
+
+          <Button onClick={() => setCiOpen(true)} variant="ghost" size="sm" className="h-8 gap-1.5 text-xs">
+            <FileCode2 className="h-3.5 w-3.5" />
+            Export CI
           </Button>
 
           {saveStatus ? <span className="ml-2 font-mono text-[10px] text-muted-foreground">{saveStatus}</span> : null}
@@ -245,10 +253,23 @@ export function Toolbar({
             <Github className="h-3 w-3" />
             Import GitHub
           </Button>
+
+          <Button
+            variant="outline"
+            className="h-9 flex-1 gap-1 text-[11px]"
+            onClick={() => {
+              setCiOpen(true);
+              setMobileMenuOpen(false);
+            }}
+          >
+            <FileCode2 className="h-3 w-3" />
+            Export CI
+          </Button>
         </div>
       ) : null}
 
       <ImportGithubModal open={importOpen} onClose={() => setImportOpen(false)} />
+      <CiConfigGenerator open={ciOpen} onOpenChange={setCiOpen} />
     </div>
   );
 }
