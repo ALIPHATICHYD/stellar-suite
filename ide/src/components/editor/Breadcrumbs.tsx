@@ -63,7 +63,10 @@ interface BreadcrumbDropdownProps {
 const BreadcrumbDropdown = forwardRef<
   HTMLButtonElement,
   BreadcrumbDropdownProps
->(function BreadcrumbDropdown({ segment, isActive, isLast, onNavigate }, ref) {
+>(function BreadcrumbDropdown(
+  { segment, isActive, isLast, onNavigate }: BreadcrumbDropdownProps,
+  ref: React.Ref<HTMLButtonElement>,
+) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const searchRef = useRef<HTMLInputElement>(null);
