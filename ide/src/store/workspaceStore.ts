@@ -12,21 +12,26 @@ interface TabInfo {
   name: string;
 }
 
-export interface WorkspaceTextFile {
-  path: string;
-  content: string;
-}
-
-export type MobilePanel = "none" | "explorer" | "interact" | "deployments" | "identities";
-export type SidebarTab = "explorer" | "deployments" | "identities" | "search" | "tests";
 export type MobilePanel =
   | "none"
   | "explorer"
   | "interact"
   | "deployments"
-  | "identities";
-export type SidebarTab = "explorer" | "deployments" | "identities" | "search";
+  | "identities"
+  | "security";
+export type SidebarTab =
+  | "explorer"
+  | "deployments"
+  | "identities"
+  | "search"
+  | "security"
+  | "tests";
 export type BuildState = "idle" | "building" | "success" | "error";
+
+export interface WorkspaceTextFile {
+  path: string;
+  content: string;
+}
 
 interface WorkspaceState {
   // File System State
@@ -127,23 +132,14 @@ export function flattenWorkspaceFiles(
   parentPath: string[] = []
 ): WorkspaceTextFile[] {
   const result: WorkspaceTextFile[] = [];
-
   for (const node of nodes) {
     const nextPath = [...parentPath, node.name];
-
     if (node.type === "folder" && node.children) {
       result.push(...flattenWorkspaceFiles(node.children, nextPath));
-      continue;
-    }
-
-    if (node.type === "file") {
-      result.push({
-        path: nextPath.join("/"),
-        content: node.content ?? "",
-      });
+    } else if (node.type === "file") {
+      result.push({ path: nextPath.join("/"), content: node.content ?? "" });
     }
   }
-
   return result;
 }
 
@@ -197,16 +193,13 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         const { openTabs, activeTabPath, unsavedFiles } = get();
         const nextTabs = openTabs.filter((t) => t.path.join("/") !== key);
         let nextActivePath = activeTabPath;
-
         if (activeTabPath.join("/") === key && nextTabs.length > 0) {
           nextActivePath = nextTabs[nextTabs.length - 1].path;
         } else if (nextTabs.length === 0) {
           nextActivePath = [];
         }
-
         const nextUnsaved = new Set(unsavedFiles);
         nextUnsaved.delete(key);
-
         set({
           openTabs: nextTabs,
           activeTabPath: nextActivePath,
@@ -218,7 +211,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         const { files, unsavedFiles } = get();
         const nextFiles = cloneFiles(files);
         const node = findNode(nextFiles, path);
-
         if (node) {
           node.content = content;
           const nextUnsaved = new Set(unsavedFiles);
@@ -240,7 +232,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           parentPath.length === 0
             ? nextFiles
             : findNode(nextFiles, parentPath)?.children;
-
         if (parent) {
           parent.push({
             name,
@@ -248,8 +239,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             language: name.endsWith(".rs")
               ? "rust"
               : name.endsWith(".toml")
-              ? "toml"
-              : "text",
                 ? "toml"
                 : "text",
             content,
@@ -265,7 +254,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           parentPath.length === 0
             ? nextFiles
             : findNode(nextFiles, parentPath)?.children;
-
         if (parent) {
           parent.push({ name, type: "folder", children: [] });
           set({ files: nextFiles });
@@ -275,7 +263,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         const { files } = get();
         const nextFiles = cloneFiles(files);
         const parent = findParent(nextFiles, path);
-
         if (parent) {
           const idx = parent.findIndex((n) => n.name === path[path.length - 1]);
           if (idx !== -1) {
@@ -291,10 +278,8 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         const nextPath = [...path.slice(0, -1), newName];
         const nextFiles = cloneFiles(files);
         const node = findNode(nextFiles, path);
-
         if (node) {
           node.name = newName;
-
           const nextTabs = openTabs.map((t) => {
             const tKey = t.path.join("/");
             if (tKey === oldKey || tKey.startsWith(oldKey + "/")) {
@@ -307,7 +292,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
             }
             return t;
           });
-
           let nextActivePath = activeTabPath;
           if (
             activeTabPath.join("/") === oldKey ||
@@ -315,7 +299,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           ) {
             nextActivePath = [...nextPath, ...activeTabPath.slice(path.length)];
           }
-
           set({
             files: nextFiles,
             openTabs: nextTabs,
@@ -328,8 +311,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
       setNetwork: (network) => {
         const config = NETWORK_CONFIG[network] || NETWORK_CONFIG.testnet;
         const currentCustomRpc = get().customRpcUrl || DEFAULT_CUSTOM_RPC;
-        const horizonUrl = network === "local" ? currentCustomRpc : config.horizon;
-
         const horizonUrl =
           network === "local" ? currentCustomRpc : config.horizon;
         set({
@@ -338,8 +319,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           networkPassphrase: config.passphrase,
         });
       },
-      setHorizonUrl: (horizonUrl) => set({ horizonUrl }),
-      setNetworkPassphrase: (networkPassphrase) => set({ networkPassphrase }),
       setHorizonUrl: (url) => set({ horizonUrl: url }),
       setNetworkPassphrase: (passphrase) =>
         set({ networkPassphrase: passphrase }),
@@ -401,9 +380,6 @@ export const useWorkspaceStore = create<WorkspaceState>()(
           state.setHydrationComplete(true);
         }
       },
-    }
-  )
-);
     },
   ),
 );
