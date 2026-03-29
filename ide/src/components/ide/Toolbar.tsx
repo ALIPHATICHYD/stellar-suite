@@ -18,7 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BuildButton } from "@/components/ide/BuildButton";
 import { Button } from "@/components/ui/button";
 import { type NetworkKey } from "@/lib/networkConfig";
-import ImportGithubModal from "@/components/ide/ImportGithubModal";
+import { ImportWizard } from "@/components/projects/ImportWizard";
 import CiConfigGenerator from "@/components/modals/CiConfigGenerator";
 import StateMockEditor from "@/components/modals/StateMockEditor";
 import { SettingsModal } from "@/components/ide/SettingsModal";
@@ -31,6 +31,9 @@ import { SaveToCloudButton } from "@/components/cloud/SaveToCloudButton";
 import { useAuth } from "@/hooks/useAuth";
 import { LiveShareButton } from "@/components/ide/LiveShareButton";
 import { useLiveShareStore } from "@/store/useLiveShareStore";
+
+/* ✅ ADD THIS */
+import NotificationCenter from "@/components/notifications/NotificationCenter";
 
 type BuildState = "idle" | "building" | "success" | "error";
 
@@ -92,9 +95,9 @@ export function Toolbar({
   const [ciOpen, setCiOpen] = useState(false);
   const [stateEditorOpen, setStateEditorOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
   const hasMockState = mockLedgerState.entries.length > 0;
 
-  // Allow CommandPalette and StatusBar to open the settings modal via a custom event
   useEffect(() => {
     const handler = () => setSettingsOpen(true);
     window.addEventListener("ide:open-settings", handler);
@@ -105,8 +108,11 @@ export function Toolbar({
     <div className="border-b border-border bg-toolbar-bg">
       {/* ── Desktop toolbar ── */}
       <div className="hidden items-center justify-between px-3 py-1.5 md:flex">
+        {/* LEFT */}
         <div className="flex items-center gap-2">
-          <span className="mr-2 font-mono text-sm font-semibold text-primary">Kit CANVAS</span>
+          <span className="mr-2 font-mono text-sm font-semibold text-primary">
+            Kit CANVAS
+          </span>
 
           <BuildButton onClick={onCompile} isBuilding={isCompiling} state={isCompiling ? "building" : buildState} disabled={isReadOnly} />
           
@@ -125,14 +131,14 @@ export function Toolbar({
               {isRunningClippy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
               Run Clippy
             </Button>
-          ) : null}
+          )}
 
           {onRunAudit ? (
             <Button type="button" variant="ghost" size="sm" onClick={onRunAudit} disabled={isRunningAudit || isReadOnly} className="h-8 gap-1.5 text-xs">
               {isRunningAudit ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ShieldAlert className="h-3.5 w-3.5" />}
               Audit
             </Button>
-          ) : null}
+          )}
 
           <GitBlameToggle />
 
@@ -160,16 +166,24 @@ export function Toolbar({
 
           <LiveShareButton />
 
-          {saveStatus ? <span className="ml-2 font-mono text-[10px] text-muted-foreground">{saveStatus}</span> : null}
+          {saveStatus && (
+            <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+              {saveStatus}
+            </span>
+          )}
         </div>
 
+        {/* RIGHT */}
         <div className="flex items-center gap-3">
+          {/* ✅ NOTIFICATION BELL HERE */}
+          <NotificationCenter />
+
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Network className="h-3.5 w-3.5" />
             <select
               value={network}
               onChange={(e) => changeNetwork(e.target.value as NetworkKey)}
-              className="rounded border border-border bg-secondary px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              className="rounded border border-border bg-secondary px-2 py-1 text-xs text-foreground"
             >
               <option value="testnet">Testnet</option>
               <option value="futurenet">Futurenet</option>
@@ -177,45 +191,15 @@ export function Toolbar({
               <option value="local">Local</option>
             </select>
           </label>
+
           <WalletManager />
           {isAuthenticated ? <UserMenu /> : <SignInButton />}
-          <button className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" title="Settings" aria-label="Settings">
-            <Settings className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
 
-      {/* ── Mobile toolbar ── */}
-      <div className="flex items-center justify-between px-2 py-1.5 md:hidden">
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-xs font-semibold text-primary">Kit CANVAS</span>
-          <BuildButton onClick={onCompile} isBuilding={isCompiling} state={isCompiling ? "building" : buildState} compact />
-        </div>
-
-        <div className="flex items-center gap-1">
-          {saveStatus ? <span className="font-mono text-[9px] text-muted-foreground">{saveStatus}</span> : null}
-          <select
-            value={network}
-            onChange={(e) => changeNetwork(e.target.value as NetworkKey)}
-            className="rounded border border-border bg-secondary px-1.5 py-0.5 text-[10px] text-foreground focus:outline-none"
-          >
-            <option value="testnet">Testnet</option>
-            <option value="futurenet">Futurenet</option>
-            <option value="mainnet">Mainnet</option>
-            <option value="local">Local</option>
-          </select>
-          <div className="origin-right scale-90">
-            <WalletManager />
-          </div>
-          <div className="origin-right scale-90">
-            {isAuthenticated ? <UserMenu /> : <SignInButton />}
-          </div>
           <button
-            onClick={() => setMobileMenuOpen((prev) => !prev)}
-            className="p-1.5 text-muted-foreground hover:text-foreground"
-            aria-label="Toggle menu"
+            onClick={() => setSettingsOpen(true)}
+            className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            <Settings className="h-4 w-4" />
           </button>
         </div>
       </div>

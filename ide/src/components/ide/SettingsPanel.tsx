@@ -9,6 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import MathSafetySettings from './MathSafetySettings';
 import RustfmtEditor from '../settings/RustfmtEditor';
+import { EnvVarManager } from '../settings/EnvVarManager';
+import SharedEnvironmentSettings from './SharedEnvironmentSettings';
+import PostBuildHooksSettings from '../settings/PostBuildHooksSettings';
 
 const SettingsPanel: React.FC = () => {
   return (
@@ -20,9 +23,11 @@ const SettingsPanel: React.FC = () => {
         </div>
 
         <Tabs defaultValue="math-safety" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="math-safety">Math Safety</TabsTrigger>
             <TabsTrigger value="formatting">Formatting</TabsTrigger>
+            <TabsTrigger value="environment">Environment</TabsTrigger>
+            <TabsTrigger value="workflow">Workflow</TabsTrigger>
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="network">Network</TabsTrigger>
             <TabsTrigger value="editor">Editor</TabsTrigger>
@@ -36,6 +41,14 @@ const SettingsPanel: React.FC = () => {
             <RustfmtEditor />
           </TabsContent>
           
+          <TabsContent value="environment" className="space-y-4">
+            <EnvVarManager />
+          </TabsContent>
+
+          <TabsContent value="workflow" className="space-y-4">
+            <PostBuildHooksSettings />
+          </TabsContent>
+
           <TabsContent value="general" className="space-y-4">
             <Card>
               <CardHeader>
@@ -51,17 +64,7 @@ const SettingsPanel: React.FC = () => {
           </TabsContent>
           
           <TabsContent value="network" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Network Settings</CardTitle>
-                <CardDescription>
-                  Configure Stellar network connections
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">Network settings coming soon...</p>
-              </CardContent>
-            </Card>
+            <SharedEnvironmentSettings />
           </TabsContent>
           
           <TabsContent value="editor" className="space-y-4">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { nativeToScVal } from "@stellar/stellar-sdk";
 import {
   PanelRightClose,
   PanelRightOpen,
@@ -18,6 +19,7 @@ import { MultisigView } from "@/components/ide/MultisigView";
 import { LiquidityPoolSimulator } from "@/components/ide/LiquidityPoolSimulator";
 import { GitPane } from "@/components/ide/GitPane";
 import { DiffEditorPane } from "@/components/editor/DiffEditorPane";
+import { CommentsPane } from "@/components/editor/CommentsPane";
 // import { EditorTabs } from "@/components/ide/EditorTabs";
 import { FileExplorer } from "@/components/ide/FileExplorer";
 import { IdentitiesView } from "@/components/ide/IdentitiesView";
@@ -30,7 +32,6 @@ import { ProptestView } from "@/components/Panels/ProptestView";
 import { EventsPane } from "@/components/ide/EventsPane";
 import { ReferencesPane } from "@/components/ide/ReferencesPane";
 import { InspectorPane } from "@/components/ide/InspectorPane";
-import { ProptestView } from "@/components/Panels/ProptestView";
 import { StatusBar } from "@/components/ide/StatusBar";
 import { Terminal } from "@/components/ide/Terminal";
 import { useTerminalBridge } from "@/hooks/useTerminalBridge";
@@ -40,6 +41,8 @@ import XdrInspector from "@/components/tools/XdrInspector";
 import { Toolbar } from "@/components/ide/Toolbar";
 import { OutlineView } from "@/components/sidebar/OutlineView";
 import { FuzzingPanel } from "@/components/sidebar/FuzzingPanel";
+import { AssetManager } from "@/components/sidebar/AssetManager";
+import { TutorialsPane } from "@/components/sidebar/TutorialsPane";
 // import { ActivityBar } from "@/components/layout/ActivityBar";
 import { StarterProjectWizard } from "@/components/modals/StarterProjectWizard";
 import { ActivityBar } from "@/components/layout/ActivityBar";
@@ -57,19 +60,32 @@ import { useDeploymentStore } from "@/store/useDeploymentStore";
 import { useDiagnosticsStore } from "@/store/useDiagnosticsStore";
 import { useIdentityStore } from "@/store/useIdentityStore";
 import { useWorkspaceStore, flattenWorkspaceFiles } from "@/store/workspaceStore";
+import { useSharedEnvironmentStore } from "@/store/useSharedEnvironmentStore";
+import { useAuditLogStore } from "@/store/useAuditLogStore";
+import { AuditLogView } from "@/components/ide/AuditLogView";
 import { useVCSStore } from "@/store/vcsStore";
 import { useErrorHelpStore } from "@/store/useErrorHelpStore";
 import ErrorHelpPanel from "@/components/ide/ErrorHelpPanel";
 import { useCloudSyncStore } from "@/store/useCloudSyncStore";
 import { ConflictModal } from "@/components/cloud/ConflictModal";
 import { useAuth } from "@/hooks/useAuth";
+import { useNotificationStore } from "@/store/useNotificationStore";
+import { useTransactionResultsStore } from "@/store/useTransactionResultsStore";
+import {
+  createWorkspaceSnapshot,
+  tutorialEngine,
+} from "@/lib/tutorials/tutorialEngine";
+import { usePostBuildHooksStore } from "@/store/usePostBuildHooksStore";
+import { runPostBuildHooks } from "@/lib/postBuildHookRunner";
 import { parseCargoAuditOutput } from "@/utils/cargoAuditParser";
 import { parseMixedOutput } from "@/utils/cargoParser";
 import { parseClippyOutput, type ClippyLint } from "@/utils/clippyParser";
+import { decodeScValBase64 } from "@/utils/scValDecoder";
 import {
   createStreamProcessor,
   readCompileResponse,
 } from "@/utils/compileStream";
+import { useTranslation } from "react-i18next";
 import {
   createStructuredTestOutputFromCargoRun,
   createSimulatedCargoTestOutput,
@@ -82,6 +98,9 @@ import {
 
 const COMPILE_API_URL =
   process.env.NEXT_PUBLIC_COMPILE_API_URL ?? "/api/compile";
+
+const createTxHash = () =>
+  crypto.randomUUID().replace(/-/g, "").slice(0, 64).toUpperCase();
 
 const toCompilePath = (pathParts: string[]) => {
   if (pathParts.length === 2 && pathParts[1].endsWith(".rs")) {
@@ -151,41 +170,40 @@ const formatRunTime = () =>
     second: "2-digit",
   });
 
-// ---------------------------------------------------------------------------
-// TestingSidebar — three sub-tabs: Snippets | Templates | Generate
-// ---------------------------------------------------------------------------
 
 function TestingSidebar() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<"snippets" | "templates" | "generate">("snippets");
+
   return (
     <div className="flex h-full flex-col">
-      {/* Sub-tab bar */}
       <div className="flex shrink-0 border-b border-sidebar-border">
-        {(["snippets", "templates", "generate"] as const).map((t) => (
+        {(["snippets", "templates", "generate"] as const).map((tValue) => (
           <button
-            key={t}
+            key={tValue}
             type="button"
             onClick={() => setTab(t)}
-            className={`flex-1 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-colors border-b-2 ${
+            className={`flex-1 border-b-2 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-colors ${
               tab === t
                 ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
-            {t === "snippets" ? "Snippets" : t === "templates" ? "Templates" : "Generate"}
+            {tValue === "snippets" ? "Snippets" : tValue === "templates" ? "Templates" : "Generate"}
           </button>
         ))}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        {tab === "snippets"  && <TestingView />}
+        {tab === "snippets" && <TestingView />}
         {tab === "templates" && <TemplatesView />}
-        {tab === "generate"  && <GeneratePropertyTest />}
+        {tab === "generate" && <GeneratePropertyTest />}
       </div>
     </div>
   );
 }
 
 export default function Index() {
+  const { t } = useTranslation();
   const {
     files,
     activeTabPath,
@@ -214,15 +232,19 @@ export default function Index() {
     setDiffViewPath,
     setTerminalOutput,
   } = useWorkspaceStore();
+
   useTerminalBridge();
 
   const { activeContext, activeIdentity, loadIdentities } = useIdentityStore();
   const { localRepoInitialized, hydrateLocalRepo, refreshLocalStatuses } =
     useVCSStore();
+  const sharedEnvConfig = useSharedEnvironmentStore((s) => s.config);
+  const { addLog: addAuditLog } = useAuditLogStore();
+  const { user, isAuthenticated } = useAuth();
+  const auditUser = user?.name ?? user?.email ?? "Guest";
   const { setDiagnostics, clearDiagnostics } = useDiagnosticsStore();
   const { addContract } = useDeployedContractsStore();
   const { isOpen: isErrorHelpOpen, errorCode, closeErrorHelp } = useErrorHelpStore();
-  const { user, isAuthenticated } = useAuth();
   const { scheduleAutoSave, syncStatus, conflictData } = useCloudSyncStore();
   const {
     isDeployModalOpen,
@@ -230,18 +252,16 @@ export default function Index() {
     deploymentError,
     pendingWasmHash,
     openDeployModal,
-    closeDeployModal,
     setDeploymentStep,
     setDeploymentError,
     setPendingWasmHash,
     resetDeployment,
   } = useDeploymentStore();
 
-  // Contract ID produced by the current deployment (shown in stepper on success)
   const [deployedContractId, setDeployedContractId] = useState<string | null>(null);
-
-  const [bottomTab, setBottomTab] = useState<"console" | "events" | "proptest">("console");
-
+  const [bottomTab, setBottomTab] = useState<"console" | "events" | "proptest">(
+    "console",
+  );
   const [wizardOpen, setWizardOpen] = useState(false);
 
   useEffect(() => {
@@ -250,10 +270,19 @@ export default function Index() {
     }
   }, [files.length]);
 
+  useEffect(() => {
+    if (!hydrationComplete) return;
+    if (!sharedEnvConfig.enabled) return;
+    if (sharedEnvConfig.network) setNetwork(sharedEnvConfig.network);
+  }, [hydrationComplete, sharedEnvConfig.enabled, sharedEnvConfig.network, setNetwork]);
+
   const [invokeState, setInvokeState] = useState<{
     phase: "idle" | "preparing" | "success" | "failed";
     message: string;
   }>({ phase: "idle", message: "Invoke" });
+
+  const appendResultLog = useTransactionResultsStore((state) => state.appendLog);
+  const postBuildHooks = usePostBuildHooksStore((state) => state.hooks);
 
   const [clippyLints, setClippyLints] = useState<ClippyLint[]>([]);
   const [isRunningClippy, setIsRunningClippy] = useState(false);
@@ -272,8 +301,15 @@ export default function Index() {
     loadIdentities();
   }, [loadIdentities]);
 
-  // Watch terminal output and drive the proptest store in real time
+  useEffect(() => {
+    useNotificationStore.getState().addNotification({
+      message: "IDE Loaded Successfully 🚀",
+      type: "success",
+    });
+  }, []);
+
   useProptestOutputWatcher();
+
   useEffect(() => {
     if (!hydrationComplete) {
       return;
@@ -282,7 +318,6 @@ export default function Index() {
     void hydrateLocalRepo(flattenWorkspaceFiles(files));
   }, [files, hydrateLocalRepo, hydrationComplete]);
 
-  // Auto-save to cloud (throttled 5 s) whenever files change and user is signed in
   useEffect(() => {
     if (!isAuthenticated || !user || !hydrationComplete) return;
     const userId = user.id ?? user.email ?? "anon";
@@ -308,8 +343,23 @@ export default function Index() {
       setLeftSidebarTab("references");
       setShowExplorer(true);
     };
+
+    const handleCommentsPane = () => {
+      setLeftSidebarTab("comments");
+      setShowExplorer(true);
+    };
+    const handleTutorialsPane = () => {
+      setLeftSidebarTab("tutorials");
+      setShowExplorer(true);
+    };
     window.addEventListener("referencesFound", handleRefTab);
-    return () => window.removeEventListener("referencesFound", handleRefTab);
+    window.addEventListener("comments:open-pane", handleCommentsPane);
+    window.addEventListener("tutorials:open-pane", handleTutorialsPane);
+    return () => {
+      window.removeEventListener("referencesFound", handleRefTab);
+      window.removeEventListener("comments:open-pane", handleCommentsPane);
+      window.removeEventListener("tutorials:open-pane", handleTutorialsPane);
+    };
   }, [setLeftSidebarTab, setShowExplorer]);
 
   const contractName = useMemo(
@@ -328,11 +378,16 @@ export default function Index() {
   );
 
   const handleCompile = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      toast.error(t('network.offline_warning', 'Cannot perform network actions while offline.'));
+      return;
+    }
+
     setIsCompiling(true);
     setBuildState("building");
     clearDiagnostics();
     setTerminalExpanded(true);
-    appendTerminalOutput("> Compiling contract...\r\n");
+    appendTerminalOutput(`> ${t('network.build', 'Compiling contract')}...\r\n`);
     appendTerminalOutput(`Target network: ${network}\r\n`);
 
     const processor = createStreamProcessor({
@@ -352,31 +407,58 @@ export default function Index() {
 
       if (!response.ok) {
         throw new Error(
-          output.trim() ||
-            `Build request failed with status ${response.status}`,
+          output.trim() || `Build request failed with status ${response.status}`,
         );
       }
 
-      appendTerminalOutput("✓ Compilation finished.\r\n");
+      appendTerminalOutput(`✓ ${t('general.success', 'Compilation finished')}.\r\n`);
       setBuildState("success");
+      addAuditLog({
+        category: "build",
+        action: "Contract Build",
+        status: "success",
+        user: auditUser,
+        params: { contractName, network },
+        details: "Contract compiled successfully",
+        rawJson: { contractName, network, timestamp: new Date().toISOString() },
+      });
+      await runPostBuildHooks(postBuildHooks, appendTerminalOutput);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Build failed";
       appendTerminalOutput(`Build failed: ${message}\r\n`);
       setBuildState("error");
+      addAuditLog({
+        category: "build",
+        action: "Contract Build",
+        status: "failure",
+        user: auditUser,
+        params: { contractName, network },
+        details: message,
+        rawJson: {
+          contractName,
+          network,
+          error: message,
+          timestamp: new Date().toISOString(),
+        },
+      });
     } finally {
       setIsCompiling(false);
       setTimeout(() => setBuildState("idle"), 1000);
     }
   }, [
+    addAuditLog,
     appendTerminalOutput,
+    auditUser,
     clearDiagnostics,
     compilePayload,
     contractName,
     network,
+    postBuildHooks,
     setBuildState,
     setDiagnostics,
     setIsCompiling,
     setTerminalExpanded,
+    t,
   ]);
 
   const handleRunClippy = useCallback(async () => {
@@ -408,9 +490,7 @@ export default function Index() {
       const parsedDiagnostics = parseMixedOutput(output, contractName);
 
       setDiagnostics(
-        parsedDiagnostics.length > 0
-          ? parsedDiagnostics
-          : parsedClippy.diagnostics,
+        parsedDiagnostics.length > 0 ? parsedDiagnostics : parsedClippy.diagnostics,
       );
       setClippyLints(parsedClippy.lints);
       setLastClippyRunAt(formatRunTime());
@@ -536,11 +616,6 @@ export default function Index() {
     [appendTerminalOutput, files, updateFileContent],
   );
 
-  /**
-   * Run the instantiation step (step 2) given an already-uploaded WASM hash.
-   * Extracted so it can be called both from the sequential flow and from
-   * the "Retry instantiation" button in the stepper.
-   */
   const runInstantiate = useCallback(
     async (wasmHash: string) => {
       const rpcUrl =
@@ -577,14 +652,39 @@ export default function Index() {
       appendTerminalOutput(`✓ Contract instantiated! ID: ${newContractId}\r\n`);
       appendTerminalOutput(`  Transaction: ${transactionHash}\r\n`);
 
+      addAuditLog({
+        category: "deploy",
+        action: "Contract Deploy",
+        status: "success",
+        user: auditUser,
+        params: {
+          contractId: newContractId,
+          contractName,
+          network,
+          wasmHash,
+          transactionHash,
+        },
+        details: `Deployed to ${network} — ID: ${newContractId}`,
+        rawJson: {
+          contractId: newContractId,
+          contractName,
+          network,
+          wasmHash,
+          transactionHash,
+          timestamp: new Date().toISOString(),
+        },
+      });
+
       setDeploymentStep("success");
       toast.success(`Contract deployed: ${newContractId.substring(0, 8)}…`);
     },
     [
       activeContext,
       activeIdentity,
+      addAuditLog,
       addContract,
       appendTerminalOutput,
+      auditUser,
       contractName,
       network,
       setContractId,
@@ -593,12 +693,12 @@ export default function Index() {
     ],
   );
 
-  /**
-   * Full two-phase deployment:
-   *   Phase 1 — compile + upload WASM  → wasmHash
-   *   Phase 2 — createContract         → contractId (C...)
-   */
   const handleDeploy = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      toast.error(t('network.offline_warning', 'Cannot perform network actions while offline.'));
+      return;
+    }
+
     setDeployedContractId(null);
     openDeployModal();
     setDeploymentStep("simulating");
@@ -608,9 +708,8 @@ export default function Index() {
     appendTerminalOutput(`> Deploying to ${network}…\r\n`);
 
     try {
-      // ── Phase 1: compile + upload WASM ──────────────────────────────────
       setDeploymentStep("uploading");
-      appendTerminalOutput("> Compiling and uploading WASM…\r\n");
+      appendTerminalOutput(`> ${t('network.deploy', 'Compiling and uploading WASM')}…\r\n`);
 
       const response = await fetch(COMPILE_API_URL, {
         method: "POST",
@@ -625,8 +724,8 @@ export default function Index() {
         throw new Error(output.trim() || `Build failed with status ${response.status}`);
       }
 
-      // Extract WASM hash from compile output
       let wasmHash: string | null = null;
+
       try {
         const parsed = JSON.parse(output) as { contractHash?: string | null };
         wasmHash = parsed.contractHash ?? null;
@@ -637,16 +736,13 @@ export default function Index() {
 
       if (!wasmHash) {
         throw new Error(
-          "WASM uploaded but no contract hash was returned. " +
-            "Cannot proceed to instantiation.",
+          "WASM uploaded but no contract hash was returned. Cannot proceed to instantiation.",
         );
       }
 
       appendTerminalOutput(`✓ WASM uploaded. Hash: ${wasmHash}\r\n`);
-      // Persist hash so the user can retry instantiation without re-uploading
       setPendingWasmHash(wasmHash);
 
-      // ── Phase 2: instantiate contract ───────────────────────────────────
       await runInstantiate(wasmHash);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Deployment failed";
@@ -654,10 +750,27 @@ export default function Index() {
       setDeploymentError(message);
       appendTerminalOutput(`✗ Deployment failed: ${message}\r\n`);
       toast.error(message);
+      addAuditLog({
+        category: "deploy",
+        action: "Contract Deploy",
+        status: "failure",
+        user: auditUser,
+        params: { contractName, network },
+        details: message,
+        rawJson: {
+          contractName,
+          network,
+          error: message,
+          timestamp: new Date().toISOString(),
+        },
+      });
     }
   }, [
+    addAuditLog,
     appendTerminalOutput,
+    auditUser,
     compilePayload,
+    contractName,
     network,
     openDeployModal,
     runInstantiate,
@@ -669,16 +782,16 @@ export default function Index() {
 
   const handleTest = useCallback(() => {
     void (async () => {
-    setTerminalExpanded(true);
+      setTerminalExpanded(true);
 
-    if (mockLedgerState.entries.length > 0) {
-      appendTerminalOutput(
-        `Injecting ${mockLedgerState.entries.length} mock ledger ${mockLedgerState.entries.length === 1 ? "entry" : "entries"} via --ledger-snapshot...\r\n`,
-      );
-      appendTerminalOutput(
-        `Mock state: ${JSON.stringify(mockLedgerState)}\r\n`,
-      );
-    }
+      if (mockLedgerState.entries.length > 0) {
+        appendTerminalOutput(
+          `Injecting ${mockLedgerState.entries.length} mock ledger ${
+            mockLedgerState.entries.length === 1 ? "entry" : "entries"
+          } via --ledger-snapshot...\r\n`,
+        );
+        appendTerminalOutput(`Mock state: ${JSON.stringify(mockLedgerState)}\r\n`);
+      }
 
       const discoveredTests = discoverWorkspaceTests(files, contractName);
       const integrationTargets = listIntegrationTargets(discoveredTests);
@@ -690,10 +803,17 @@ export default function Index() {
       }
 
       appendTerminalOutput(
-        `Detected ${discoveredTests.length} test(s): ${discoveredTests.filter((test) => test.testType === "integration").length} integration, ${discoveredTests.filter((test) => test.testType === "unit").length} unit.\r\n`,
+        `Detected ${discoveredTests.length} test(s): ${
+          discoveredTests.filter((test) => test.testType === "integration").length
+        } integration, ${
+          discoveredTests.filter((test) => test.testType === "unit").length
+        } unit.\r\n`,
       );
+
       if (hasRootTests) {
-        appendTerminalOutput("Integration tests folder detected at contract root: tests/.\r\n");
+        appendTerminalOutput(
+          "Integration tests folder detected at contract root: tests/.\r\n",
+        );
       }
 
       try {
@@ -737,7 +857,8 @@ export default function Index() {
         setTestRun(nextRun);
         setTerminalOutput(formatTestRunForTerminal(nextRun));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Run test request failed";
+        const message =
+          error instanceof Error ? error.message : "Run test request failed";
         appendTerminalOutput(`Falling back to simulated tests: ${message}\r\n`);
         const rawOutput = createSimulatedCargoTestOutput({ files, activeTabPath });
         const nextRun = parseStructuredTestOutput(rawOutput);
@@ -759,7 +880,9 @@ export default function Index() {
   const handleRerunFailedTests = useCallback(() => {
     void (async () => {
       const failedTestNames =
-        testRun?.cases.filter((testCase) => testCase.status === "failed").map((testCase) => testCase.name) ?? [];
+        testRun?.cases
+          .filter((testCase) => testCase.status === "failed")
+          .map((testCase) => testCase.name) ?? [];
 
       if (failedTestNames.length === 0) {
         return;
@@ -827,15 +950,25 @@ export default function Index() {
         setTerminalOutput(formatTestRunForTerminal(nextRun));
       }
     })();
-  }, [activeTabPath, compilePayload.files, contractName, files, setTerminalExpanded, setTerminalOutput, testRun]);
+  }, [
+    activeTabPath,
+    compilePayload.files,
+    contractName,
+    files,
+    setTerminalExpanded,
+    setTerminalOutput,
+    testRun,
+  ]);
 
   const handleOpenTestTrace = useCallback(
     (traceFile: string, line: number, column = 1) => {
       const pathParts = resolveWorkspacePathForTrace(traceFile, files);
+
       if (!pathParts) {
         appendTerminalOutput(`Unable to resolve ${traceFile}:${line}:${column}\r\n`);
         return;
       }
+
       addTab(pathParts, pathParts[pathParts.length - 1]);
       setActiveTabPath(pathParts);
       window.dispatchEvent(
@@ -863,6 +996,8 @@ export default function Index() {
         return;
       }
 
+      const start = performance.now();
+      const timestamp = new Date().toISOString();
       setTerminalExpanded(true);
       const signer =
         activeContext?.type === "web-wallet"
@@ -872,19 +1007,68 @@ export default function Index() {
       appendTerminalOutput(`Invoking ${fn}(${args}) as ${signer}...\r\n`);
       setInvokeState({ phase: "preparing", message: "Preparing..." });
 
-      setTimeout(() => {
-        appendTerminalOutput('Result: ["ok"]\r\n');
+      try {
+        // Simulated invocation response — replace with real pipeline when available.
+        const simulatedScVal = nativeToScVal(["Hello", "Dev"]);
+        const resultScValBase64 = simulatedScVal.toXDR("base64");
+        const { value, error } = decodeScValBase64(resultScValBase64);
+        const txHash = createTxHash();
+
+        appendTerminalOutput(
+          `Result: ${JSON.stringify(value ?? ["Hello", "Dev"])}\r\n`,
+        );
+        appendTerminalOutput(`Tx: ${txHash}\r\n`);
+
+        appendResultLog({
+          id: crypto.randomUUID(),
+          timestamp,
+          network: network as NetworkKey,
+          contractId,
+          fnName: fn,
+          argsJson: args,
+          status: "success",
+          txHash,
+          resultScValBase64,
+          decodedResult: value ?? null,
+          errorMessage: error ?? null,
+          durationMs: Math.round(performance.now() - start),
+          source: "simulate",
+        });
+
         setInvokeState({ phase: "success", message: "Confirmed" });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Invocation failed";
+        appendTerminalOutput(`Invoke failed: ${message}\r\n`);
+        appendResultLog({
+          id: crypto.randomUUID(),
+          timestamp,
+          network: network as NetworkKey,
+          contractId,
+          fnName: fn,
+          argsJson: args,
+          status: "error",
+          txHash: null,
+          resultScValBase64: null,
+          decodedResult: null,
+          errorMessage: message,
+          durationMs: Math.round(performance.now() - start),
+          source: "simulate",
+        });
+        setInvokeState({ phase: "failed", message: "Failed" });
+      } finally {
         setTimeout(() => {
           setInvokeState({ phase: "idle", message: "Invoke" });
         }, 1500);
-      }, 900);
+      }
     },
     [
       activeContext,
       activeIdentity,
+      appendResultLog,
       appendTerminalOutput,
       contractId,
+      network,
       setTerminalExpanded,
     ],
   );
@@ -906,7 +1090,9 @@ export default function Index() {
     <div className="flex h-screen flex-col overflow-hidden">
       <Toolbar
         onCompile={handleCompile}
-        onDeploy={() => { void handleDeploy(); }}
+        onDeploy={() => {
+          void handleDeploy();
+        }}
         onTest={handleTest}
         isCompiling={isCompiling}
         buildState={buildState}
@@ -952,9 +1138,7 @@ export default function Index() {
             {leftSidebarTab === "identities" ? (
               <IdentitiesView network={network} />
             ) : null}
-            {leftSidebarTab === "search" ? (
-              <GlobalSearch />
-            ) : null}
+            {leftSidebarTab === "search" ? <GlobalSearch /> : null}
             {leftSidebarTab === "outline" ? <OutlineView /> : null}
             {leftSidebarTab === "security" ? (
               <div className="h-full overflow-y-auto">
@@ -976,38 +1160,45 @@ export default function Index() {
                 </div>
               </div>
             ) : null}
-            {leftSidebarTab === "tests" ? (
-              <TestingSidebar />
-            ) : null}
+            {leftSidebarTab === "tests" ? <TestingSidebar /> : null}
             {leftSidebarTab === "fuzzing" ? <FuzzingPanel /> : null}
             {leftSidebarTab === "git" ? <GitPane /> : null}
+            {leftSidebarTab === "comments" ? <CommentsPane /> : null}
             {leftSidebarTab === "references" ? <ReferencesPane /> : null}
             {leftSidebarTab === "binary-diff" ? (
-              <div className="flex flex-col h-full bg-sidebar p-4 space-y-4">
-                <div className="flex items-center gap-2 text-primary font-bold text-[10px] uppercase tracking-wider">
+              <div className="flex h-full flex-col space-y-4 bg-sidebar p-4">
+                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-primary">
                   <Binary className="h-4 w-4" />
                   <span>Binary Auditing</span>
                 </div>
-                <p className="text-[11px] text-muted-foreground leading-relaxed italic">
-                  Compare compiled WASM binaries side-by-side to audit changes in public symbols and byte-level logic.
+                <p className="text-[11px] italic leading-relaxed text-muted-foreground">
+                  Compare compiled WASM binaries side-by-side to audit changes in
+                  public symbols and byte-level logic.
                 </p>
-                <div className="p-3 bg-muted/50 rounded-lg border border-border">
-                  <h4 className="text-[10px] font-bold uppercase mb-1.5 flex items-center gap-1.5">
+                <div className="rounded-lg border border-border bg-muted/50 p-3">
+                  <h4 className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase">
                     <Activity className="h-3 w-3" /> Quick Tip
                   </h4>
-                  <p className="text-[10px] text-muted-foreground">Select two builds in the main area to analyze the delta between them.</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Select two builds in the main area to analyze the delta
+                    between them.
+                  </p>
                 </div>
               </div>
             ) : null}
             {leftSidebarTab === "inspector" ? <InspectorPane /> : null}
             {leftSidebarTab === "benchmarks" ? <BenchmarkDashboard /> : null}
             {leftSidebarTab === "multisig" ? <MultisigView network={network} /> : null}
-            {leftSidebarTab === "liquidity" ? <LiquidityPoolSimulator /> : null}
+            {leftSidebarTab === "liquidity" ? (
+              <LiquidityPoolSimulator />
+            ) : null}
+            {leftSidebarTab === "audit" ? <AuditLogView /> : null}
+            {leftSidebarTab === "assets" ? <AssetManager /> : null}
+            {leftSidebarTab === "tutorials" ? <TutorialsPane /> : null}
           </aside>
         ) : null}
 
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {/* <EditorTabs /> */}
           <div className="min-h-0 flex-1 overflow-hidden">
             {leftSidebarTab === "binary-diff" ? (
               <BinaryDiffTool />
@@ -1021,8 +1212,8 @@ export default function Index() {
               <CodeEditor />
             )}
           </div>
-          <div className="h-56 shrink-0 border-t border-border flex flex-col">
-            {/* Bottom panel tab bar */}
+
+          <div className="flex h-56 shrink-0 flex-col border-t border-border">
             <div
               className="flex shrink-0 items-center border-b border-border bg-secondary"
               role="tablist"
@@ -1030,8 +1221,8 @@ export default function Index() {
             >
               {(
                 [
-                  { id: "console",  label: "Console"  },
-                  { id: "events",   label: "Events"   },
+                  { id: "console", label: "Console" },
+                  { id: "events", label: "Events" },
                   { id: "proptest", label: "Proptest" },
                 ] as const
               ).map((tab) => (
@@ -1041,7 +1232,7 @@ export default function Index() {
                   role="tab"
                   aria-selected={bottomTab === tab.id}
                   onClick={() => setBottomTab(tab.id)}
-                  className={`px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition-colors border-b-2 ${
+                  className={`border-b-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition-colors ${
                     bottomTab === tab.id
                       ? "border-primary text-foreground"
                       : "border-transparent text-muted-foreground hover:text-foreground"
@@ -1052,7 +1243,6 @@ export default function Index() {
               ))}
             </div>
 
-            {/* Tab panels */}
             <div className="min-h-0 flex-1 overflow-hidden">
               {bottomTab === "console" && (
                 <Terminal
@@ -1066,7 +1256,7 @@ export default function Index() {
                   }
                 />
               )}
-              {bottomTab === "events"   && <EventsPane />}
+              {bottomTab === "events" && <EventsPane />}
               {bottomTab === "proptest" && <ProptestView />}
             </div>
           </div>
@@ -1106,17 +1296,14 @@ export default function Index() {
         </aside>
       </div>
 
-      <div className="hidden md:block">
-        <StatusBar language={activeFileContext?.language} />
-      </div>
+      <StatusBar language={activeFileContext?.language} />
 
       <StarterProjectWizard open={wizardOpen} onOpenChange={setWizardOpen} />
 
-      {/* ── Cloud conflict resolution modal ───────────────────────────── */}
       {syncStatus === "conflict" && conflictData && (
         <ConflictModal conflictData={conflictData} />
       )}
-      {/* ── Deployment progress modal ──────────────────────────────── */}
+
       <DeploymentStepper
         open={isDeployModalOpen}
         step={deploymentStep}
