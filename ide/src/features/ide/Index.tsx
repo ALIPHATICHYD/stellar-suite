@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   PanelRightClose,
   PanelRightOpen,
+  Activity,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -214,6 +215,17 @@ export default function Index() {
     setTerminalOutput,
   } = useWorkspaceStore();
   useTerminalBridge();
+  
+  if (!hydrationComplete) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <Activity className="h-10 w-10 animate-spin text-primary mx-auto" />
+          <p className="text-sm text-muted-foreground animate-pulse">Initializing Stellar IDE...</p>
+        </div>
+      </div>
+    );
+  }
 
   const { compile: workerCompile, cancel: cancelCompile } = useCompilationWorker();
 

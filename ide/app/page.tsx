@@ -1,7 +1,8 @@
 "use client";
 
 import { CommandPalette } from "@/components/ide/CommandPalette";
-import Index from "@/features/ide/Index";
+import dynamic from "next/dynamic";
+const Index = dynamic(() => import("@/features/ide/Index"), { ssr: false });
 import { MobileGatekeeper } from "@/components/ide/MobileGatekeeper";
 import { QuickOpen } from "@/components/ide/QuickOpen";
 import { SettingsModal } from "@/components/ide/SettingsModal";
@@ -11,6 +12,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { useEffect, useState } from "react";
 
 export default function HomePage() {
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -69,6 +75,8 @@ export default function HomePage() {
       window.removeEventListener("ide:open-settings", handleOpenSettings);
     };
   }, []);
+
+  if (!isMounted) return null;
 
   return (
     <>

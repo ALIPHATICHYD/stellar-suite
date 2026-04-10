@@ -6,7 +6,8 @@ import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
-import Index from "@/features/ide/Index";
+import dynamic from "next/dynamic";
+const Index = dynamic(() => import("@/features/ide/Index"), { ssr: false });
 import { useLiveShareStore } from "@/store/useLiveShareStore";
 import { Shield } from "lucide-react";
 
@@ -15,6 +16,11 @@ interface SharePageProps {
 }
 
 export default function SharePage({ params }: SharePageProps) {
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   const { id } = use(params);
   const [queryClient] = useState(() => new QueryClient());
   const { joinSession, reset } = useLiveShareStore();
@@ -27,6 +33,8 @@ export default function SharePage({ params }: SharePageProps) {
       reset();
     };
   }, [id, joinSession, reset]);
+
+  if (!isMounted) return null;
 
   return (
     <QueryClientProvider client={queryClient}>
