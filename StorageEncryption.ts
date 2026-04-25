@@ -123,3 +123,26 @@ export async function decryptSecret(encryptedPayload: string, passphrase: string
   const decoder = new TextDecoder();
   return decoder.decode(decryptedBuffer);
 }
+
+/**
+ * Checks if a given string is a valid encrypted payload.
+ * Useful for migration logic to detect unencrypted legacy secrets.
+ */
+export function isEncryptedPayload(payload: string): boolean {
+  try {
+    const parsed = JSON.parse(payload) as Partial<EncryptedData>;
+    return !!(parsed && parsed.cipherText && parsed.iv && parsed.salt);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Migrates a legacy unencrypted secret to an encrypted payload.
+ */
+export async function migrateLegacySecret(secret: string, passphrase: string): Promise<string> {
+  if (isEncryptedPayload(secret)) {
+    return secret; // Already encrypted
+  }
+  return encryptSecret(secret, passphrase);
+}
